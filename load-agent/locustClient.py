@@ -130,18 +130,26 @@ class CustomClient:
             if self.port is not None:
                 portmanager.returnPort(self.port)
                 self.port = None
+                
             self.port = portmanager.getPort()
-
             self.errors = 0
+            
             self.agent = subprocess.Popen(
                 ["node", "--max-old-space-size=64", "dist/agent.js"],
                 bufsize=0,
                 universal_newlines=True,
                 stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE,
-                stderr=sys.stderr,
+                stderr=subprocess.PIPE,
                 shell=False,
             )
+            
+            
+            time.sleep(0.1)
+            
+            if self.agent.poll() is not None:
+                stderr_output = self.agent.stderr.read() if self.agent.stderr else "(no stderr)"
+                raise RuntimeError(f"Agent failed to start. Stderr:\n{stderr_output}")
 
             self.run_command(
                 {
@@ -154,14 +162,10 @@ class CustomClient:
 
             # Create the wallet for the first time
             self.agentConfig = self.readjsonline()["result"]
-            # self.agentConfig = self.agent.stdout.readline()
-
-            # we tried to start the agent and failed
-            if self.agent is None or self.agent.poll() is not None:
-                raise Exception("unable to start")
-        except Exception as e:
+            
+        except Exception:
             self.shutdown()
-            raise e
+            raise
 
     def shutdown(self):
         # Read output until process closes
@@ -222,10 +226,21 @@ class CustomClient:
             self.agent.stdin.write(json.dumps(command))
             self.agent.stdin.write("\n")
             self.agent.stdin.flush()
-        except Exception as e:
-            # if we get an exception here, we cannot run any new commands
+
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            print(f"[run_command] Pipe broken → restarting agent: {e}", file=sys.stderr)
             self.shutdown()
-            raise e
+            self.startup(reinstantiate=True)
+
+            # retry once
+            self.agent.stdin.write(json.dumps(command))
+            self.agent.stdin.write("\n")
+            self.agent.stdin.flush()
+
+        except Exception:
+            self.shutdown()
+            raise
+
 
     def readjsonline(self):
         try:
@@ -233,9 +248,18 @@ class CustomClient:
                 line = None
                 raw_line_stdout = None
 
-                if self.agent.stdout.closed:
-                    raise Exception("Stdout is closed.")
+                # ---- NEW: detect agent death or broken pipe early ----
+                if self.agent is None:
+                    raise BrokenPipeError("Agent is not running (agent is None).")
 
+                if self.agent.poll() is not None:
+                    raise BrokenPipeError(f"Agent process exited with code {self.agent.poll()}")
+
+                if self.agent.stdout is None or self.agent.stdout.closed:
+                    raise BrokenPipeError("Agent stdout is closed (broken pipe).")
+                # -------------------------------------------------------
+
+                # Poll for available data
                 q = select.poll()
                 q.register(self.agent.stdout, select.POLLIN)
 
@@ -243,31 +267,41 @@ class CustomClient:
                     raw_line_stdout = self.agent.stdout.readline()
 
                     if not raw_line_stdout:
-                        raise Exception("EOF reached or empty line received.")
+                        raise BrokenPipeError("EOF received — agent likely crashed or pipe closed.")
 
+                    # Attempt JSON parse
                     try:
                         line = json.loads(raw_line_stdout)
                     except json.JSONDecodeError:
-                        # Log non-JSON data and continue reading
                         print(f"{raw_line_stdout.strip()}", file=sys.stderr)
-                        continue  # Try reading the next line
+                        continue  # keep reading lines
                 else:
-                    raise Exception("Read Timeout")
+                    raise TimeoutError("Read Timeout")
 
+                # Sanity check: must be a dict
                 if not line or not isinstance(line, dict):
                     print(line, file=sys.stderr)
-                    continue  # Skip to next line if somehow still invalid
+                    continue
 
+                # Agent reported error
                 if line.get("error") != 0:
-                    raise Exception("Error encountered within load testing agent: ", line)
+                    raise RuntimeError(f"Agent returned error: {line}")
 
                 return line
 
         except Exception as e:
+            # ---- NEW: increment error counter + auto-repair ----
             self.errors += 1
             if self.errors > self.errorsBeforeRestart:
-                self.shutdown()  # Restart if in bad state
+                print("[readjsonline] Too many errors → restarting agent", file=sys.stderr)
+                try:
+                    self.shutdown()
+                except Exception:
+                    pass
+                # Fresh agent instantiation on next call
+            # ----------------------------------------------------
             raise e
+
 
     @stopwatch
     def ping_mediator(self):
