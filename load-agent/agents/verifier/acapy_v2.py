@@ -1,7 +1,6 @@
 import time
 from json.decoder import JSONDecodeError
 
-import requests
 from models import AnonCredsPresReq, IndyPresReq, ProofRequest
 from models import RequestPresentationV2 as RequestPresentation
 from settings import Settings
@@ -30,7 +29,7 @@ class AcapyVerifier(BaseVerifier):
             return IndyPresReq(indy=proof_request)
 
     def create_connectionless_request(self):
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/present-proof-2.0/send-request",
             headers=self.headers,
             json=RequestPresentation(
@@ -48,7 +47,7 @@ class AcapyVerifier(BaseVerifier):
 
     def request_verification(self, connection_id):
 
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/present-proof-2.0/send-request",
             headers=self.headers,
             json=RequestPresentation(
@@ -70,7 +69,7 @@ class AcapyVerifier(BaseVerifier):
         # Want to do a for loop
         try:
             for _ in range(self.verifiedTimeoutSeconds):
-                r = requests.get(
+                r = self.session.get(
                     f"{self.agent_url}/present-proof-2.0/records/{pres_ex_id}",
                     headers=self.headers,
                 )
@@ -82,7 +81,7 @@ class AcapyVerifier(BaseVerifier):
                     break
                 time.sleep(1)
 
-            r_verify = requests.post(
+            r_verify = self.session.post(
                 f"{self.agent_url}/present-proof-2.0/records/{pres_ex_id}/verify-presentation",
                 headers=self.headers,
             )

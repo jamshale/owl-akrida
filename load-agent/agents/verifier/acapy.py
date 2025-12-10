@@ -1,7 +1,6 @@
 import time
 from json.decoder import JSONDecodeError
 
-import requests
 from models import ProofRequest, RequestPresentationV1
 from settings import Settings
 
@@ -24,7 +23,7 @@ class AcapyVerifier(BaseVerifier):
         # Calling verification agent
 
         # API call to /present-proof/create-request
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/present-proof/create-request",
             json=RequestPresentationV1(
                 comment="Performance Verification", proof_request=self.proof_request
@@ -47,7 +46,7 @@ class AcapyVerifier(BaseVerifier):
         # From verification side
         # Might need to change nonce
         # TO DO: Generalize schema parts
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/present-proof/send-request",
             json=RequestPresentationV1(
                 comment="Performance Verification",
@@ -73,7 +72,7 @@ class AcapyVerifier(BaseVerifier):
         iteration = 0
         try:
             while iteration < self.verifiedTimeoutSeconds:
-                r = requests.get(
+                r = self.session.get(
                     f"{self.agent_url}/present-proof/records/{presentation_exchange_id}",
                     headers=self.headers,
                 )
