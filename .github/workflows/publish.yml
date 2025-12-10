@@ -15,7 +15,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: github.repository == 'openwallet-foundation/owl-akrida'
+    if: github.repository == 'jamshale/owl-akrida'
 
     steps:
       - name: Checkout code
