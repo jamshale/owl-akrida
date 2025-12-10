@@ -1,6 +1,5 @@
 import time
 
-import requests
 from models import AnonCredsRevocation, CredentialProposalV1, IssueCredentialV1
 
 from .base import BaseIssuer
@@ -22,7 +21,7 @@ class AcapyIssuer(BaseIssuer):
             credential_proposal=CredentialProposalV1(attributes=self.cred_attributes),
         ).model_dump()
 
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/issue-credential/send",
             json=payload,
             headers=self.headers,
@@ -45,7 +44,7 @@ class AcapyIssuer(BaseIssuer):
             cred_ex_id=credential_exchange_id,
             notify_version="v1_0",
         ).model_dump()
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/revocation/revoke",
             json=payload,
             headers=self.headers,

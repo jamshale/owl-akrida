@@ -1,16 +1,8 @@
 import time
 
-import requests
-from models import (
-    AnonCredsFilter,
-    AnonCredsRevocation,
-    CredentialPreview,
-    Filter,
-    IndyFilter,
-)
-from models import (
-    IssueCredentialV2 as IssueCredential,
-)
+from models import (AnonCredsFilter, AnonCredsRevocation, CredentialPreview,
+                    Filter, IndyFilter)
+from models import IssueCredentialV2 as IssueCredential
 from settings import Settings
 
 from .base import BaseIssuer
@@ -28,7 +20,7 @@ class AcapyIssuer(BaseIssuer):
 
     def issue_credential(self, connection_id):
                 
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}/issue-credential-2.0/send",
             headers=self.headers,
             json=IssueCredential(
@@ -50,7 +42,7 @@ class AcapyIssuer(BaseIssuer):
 
     def revoke_credential(self, connection_id, cred_ex_id):
         time.sleep(1)
-        r = requests.post(
+        r = self.session.post(
             f"{self.agent_url}{self.revoke_endpoint}",
             headers=self.headers,
             json=AnonCredsRevocation(
